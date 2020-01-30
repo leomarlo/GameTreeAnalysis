@@ -8,7 +8,7 @@ pebbles_per_player = 3
 
 # The game positions look like `[i, j, edges]' where `i' and `j' are the number
 # of vertices placed by player 0 resp. player 1 and `edges' is the set of
-# edges, vertices by player 0 are enumerated from -k to -i and vertices by
+# edges, vertices by player 0 are enumerated from -i to -1 and vertices by
 # player 1 from 0 to j-1.
 def all_graph_moves(pos, player_to_move):
     moves = []
