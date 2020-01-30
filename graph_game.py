@@ -6,7 +6,10 @@ Game = namedtuple("Game", ["starting_pos", "all_moves", "eval_pos"])
 
 pebbles_per_player = 3
 
-
+# The game positions look like `[i, j, edges]' where `i' and `j' are the number
+# of vertices placed by player 0 resp. player 1 and `edges' is the set of
+# edges, vertices by player 0 are enumerated from -k to -i and vertices by
+# player 1 from 0 to j-1.
 def all_graph_moves(pos, player_to_move):
     moves = []
     if pos[player_to_move] < pebbles_per_player:
@@ -15,7 +18,7 @@ def all_graph_moves(pos, player_to_move):
         moves.append(new_pos)
     if pos[0] + pos[1] < 2 * pebbles_per_player:
         moves += [
-            [pos[0], pos[1], pos[2] + [(i, j)]]
+            [pos[0], pos[1], pos[2] | {(i, j)}]
             for i in range(-pos[0], pos[1])
             for j in range(-pos[0], pos[1])
             if i != j and (i, j) not in pos[2] and (j, i) not in pos[2]
@@ -31,15 +34,15 @@ def argmin(xs, f):
 def eval_graph_pos(pos, player_to_move):
     if pos[0] + pos[1] < 2 * pebbles_per_player:
         return 0
-    tmp = set(pos[2])
+    tmp = pos[2].copy()
     while True:
-        if tmp == []:
+        if tmp == set():
             return 0
-        if all([i < 0 and j < 0 for (i, j) in tmp]):
+        if all(i < 0 and j < 0 for (i, j) in tmp):
             return -1 if player_to_move else 1
-        if all([0 <= i and 0 <= j for (i, j) in tmp]):
+        if all(0 <= i and 0 <= j for (i, j) in tmp):
             return 1 if player_to_move else -1
         tmp -= argmin(tmp, lambda v: len([e for e in tmp if e[1] == v]))
 
 
-graph = Game([0, 0, []], all_graph_moves, eval_graph_pos)
+graph = Game([0, 0, set()], all_graph_moves, eval_graph_pos)
