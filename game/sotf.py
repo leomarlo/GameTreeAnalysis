@@ -1,23 +1,13 @@
-from gym import Env, spaces, error
 import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-# from collections import Counter
-# import string
 
-
-
-
-# from gym import spaces
-# from gym.spaces import Space
-# from gym import logger
-
-class Sotf(Env):
+class Sotf():
 
     metadata = {'render.modes': ['human', 'console']}
 
-    def __init__(self,peb,arr,nr_players,field_size):
+    def __init__(self,peb,arr,nr_players,field_size,action_format='dictionar'):
         self.peb = peb
         self.arr = arr
         self.nr_players = nr_players
@@ -25,22 +15,19 @@ class Sotf(Env):
         self.field_size = field_size
         self.peb_total = self.nr_players * self.peb
 
-        alphabet = ' abcdefghijklmnopqrstuvwxyz'
-        ALPHABET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        alpha_to_num = {letter: i for i, letter in enumerate(alphabet)}
-        alpha_to_num.update({LETTER: i for i, LETTER in enumerate(ALPHABET)})
-        self.alpha_to_num=alpha_to_num
+        self.done = False
 
         self.either_peb_or_arrow=True
         self.any_or_all_arrows="all"
         self.stage="placing"
         self.win_by = "survivors" # can also be "degree"
 
+        self.convert_action = turn_into_action(action_format=action_format)
         self.scores = [0]*self.nr_players
         self.rewards = [0]*self.nr_players
         self.triggering_player = 0
         self.winner_takes_it_all = True
-        # True: 1 point for highest score. zero points for everyone the same score. -1 for someone else has the hightest score
+        # True: 1 point for highest score. 0 points for everyone the same score. -1 for someone else has the hightest score
         # False: normalize all score to -1,1 range and assign
 
         # for rendering
@@ -84,7 +71,7 @@ class Sotf(Env):
 
     def assign_scores(self):
         if self.win_by=="survivors":
-            scores=[sum((self.pebbles_df['player']==player) & (self.pebbles_df['placed']==1)) for player in range(1,self.nr_players+1)]
+            self.scores=[sum((self.pebbles_df['player']==player) & (self.pebbles_df['placed']==1)) for player in range(1,self.nr_players+1)]
         elif self.win_by=="degree":
             self.scores=[sum(self.pebbles_df.loc[(self.pebbles_df['player'] == player) & (self.pebbles_df['placed'] == 1),'deg']) for player in
               range(1, self.nr_players + 1)]
@@ -148,13 +135,14 @@ class Sotf(Env):
         act=[peb[0],peb[1],arr[0][0],arr[0][1],arr[1][0],arr[1][1]]
         act=[peb,arr]
         """
-        done = False
+        # self.done = False
         # FIXME: Only do these actions when we are in placing mode !!!
 
         if self.stage == "placing":
 
-            some_pebble = action[0][1] != 0
-            some_arrow = action[1][1] != 0
+            converted_action = self.convert_action(action)
+            some_pebble = converted_action[0] >= 0
+            some_arrow = converted_action[2] >= 0
             if self.either_peb_or_arrow:
                 pebble_action = some_pebble and not some_arrow
                 arrow_action = some_arrow and not some_pebble
@@ -163,13 +151,8 @@ class Sotf(Env):
                 arrow_action = some_arrow
 
             if pebble_action:
-                chess_pos=action[0]
-                pos = [None, None]
-                pos[1] = chess_pos[1] - 1
-                pos[0] = self.alpha_to_num[chess_pos[0]] - 1
-
                 # is the position within the bounds
-                if pos[0]<self.field_size and pos[1]<self.field_size:
+                if converted_action[0]<self.field_size and converted_action[1]<self.field_size:
                     # we are within the bounds
                     # choose a pebble place it and update peb state and arr state
                     temp_df = self.pebbles_df[(self.pebbles_df['placed'] == 0) & (self.pebbles_df['player'] == self.current_player)]
@@ -181,14 +164,14 @@ class Sotf(Env):
                         # still some pebbles for this player
 
                         # may the pebble be placed or not
-                        if self.peb_state[pos[0], pos[1]]==0:
+                        if self.peb_state[converted_action[0], converted_action[1]]==0:
                             # update pebbles state
-                            self.peb_state[pos[0], pos[1]] = self.current_player
+                            self.peb_state[converted_action[0], converted_action[1]] = self.current_player
                             self.state['pebbles'] = self.peb_state
 
                             # update pebbles dataframe
-                            self.pebbles_df.at[temp_df.iloc[0, 0], 'x'] = pos[0]
-                            self.pebbles_df.at[temp_df.iloc[0, 0], 'y'] = pos[1]
+                            self.pebbles_df.at[temp_df.iloc[0, 0], 'x'] = converted_action[0]
+                            self.pebbles_df.at[temp_df.iloc[0, 0], 'y'] = converted_action[1]
                             self.pebbles_df.at[temp_df.iloc[0, 0], 'placed'] = 1
 
 
@@ -200,18 +183,8 @@ class Sotf(Env):
                     print('outside of field bounds')
 
             elif arrow_action:
-                # place an arrow
-                chess_pos = action[1]
-
-                source = [None]*2
-                target = [None]*2
-
-                source[1] = chess_pos[1] - 1
-                source[0] = self.alpha_to_num[chess_pos[0]] - 1
-
-                target[1] = chess_pos[3] - 1
-                target[0] = self.alpha_to_num[chess_pos[2]] - 1
-
+                source = converted_action[2:4]
+                target = converted_action[4:6]
                 # is this a possible move
                 source_occupied = self.peb_state[source[0], source[1]] != 0
                 target_occupied = self.peb_state[target[0], target[1]] != 0
@@ -270,48 +243,23 @@ class Sotf(Env):
                 self.assign_scores()
                 print('after extinction wave and after assigning scores the scores are ')
                 print(self.scores)
+                self.stage = "extinction-rewards"
                 # set rewards
-                self._assign_rewards()
+                self._assign_rewards()  
                 print('This translates into the following rewards ')
                 print(self.rewards)
+                self.done = True
+
         else:
             # we are not placing anymore
             # or rather placing does not affect the board, just everyone gets her or his reward for the game
             pass
 
-        # compute reward
-        reward = self._get_reward()
-        print('The reward for this round is')
-        print(reward)
-
-        previous_stage = self.stage
-
-        # FIXME:
-        if self.stage == "extinction-rewards":
-            # when all rewards were given we finish this episode
-            if self.current_player == (self.triggering_player)%self.nr_players +1:
-                self.stage = "game over"
-                done = True
-            else:
-                pass
-        elif self.stage == "extinction-triggered":
-            # enter into a round of reward allocations
-            self.stage = "extinction-rewards"
-            self.triggering_player = self.current_player
-
-        elif self.stage == "placing":
-            # nothing special
-            pass
-        else:
-            # continue as if nothing happened
-            print('a bit unusual. The stage {} has never been seen.'.format(str(self.stage)))
-
-        info = {'scores': self.scores, 'reward': reward, 'stage': self.stage, 'previous stage': previous_stage, 'current_player': self.current_player}
-        print(info)
         self.update_player()
-        print('next player number is'+str(self.current_player))
-        print('why does the return not work?')
-        return self.state, reward, done, info
+        reward = 0
+        info = 'nothing'
+
+        return self.state, reward, self.done, info
 
 
     def _get_reward(self):
@@ -320,6 +268,9 @@ class Sotf(Env):
     def _assign_rewards(self):
         # is the game finished?
         if self.stage == "extinction-rewards":
+            scores_sorted = deepcopy(self.scores)
+            scores_sorted.sort(reverse = True)
+            max_score = scores_sorted[0]
             if all([s==max_score for s in self.scores]):
                 # its a remie for everyone
                 self.rewards= [0]*self.nr_players
@@ -371,6 +322,7 @@ class Sotf(Env):
         self.any_or_all_arrows = "all"
         self.stage = "placing"
         self.win_by = "survivors"  # can also be "degree"
+        self.done = False
 
         self.scores = [0] * self.nr_players
         self.rewards = [0] * self.nr_players
@@ -450,3 +402,126 @@ class Sotf(Env):
         #             pygame.display.update()
         #             clock.tick(self.metadata["video.frames_per_second"])
         # print(self.state)
+
+
+
+
+def turn_into_action(action_format='default'):
+    """create a conversion function that converts an action input during the game
+
+    Parameters
+    ----------
+    action_format : dict or str, optional
+        If a dictionary is passed, then there are the following options:
+            "format" -> ("dictionary", "list_of_lists" or "single_list")
+            "coordinates" -> ("chess", "number" or "python")
+            "arrow_in_2d_array" -> (True or False)
+            "None_or_minus_one" -> ("none" or "minus_one")
+        Most of these are self-explanatory.
+        The way it is handled in the code is:
+            "format": "single_list"
+            "coordinates": "python"
+            "arrow_in_2d_array": False
+            "None_or_minus_one": "none"
+        The most intuitive and convenient for human input is:
+            "format": "dictionary"
+            "coordinates": "chess"
+            "arrow_in_2d_array": True
+            "None_or_minus_one": "minus_one"
+        This is also the default assignment.
+        If a string is passed, then it can be either 'default' or 'compressed'. The latter is the way that python handles it.
+
+    Returns
+    -------
+    function
+        a function that takes the action and turns it into a python handable action
+    """
+
+    # default
+    default = {"format":"dictionary",
+                "coordinates":"chess",
+                "arrow_in_2d_array":True,
+                "None_or_minus_one": "none"}
+
+    compressed = {"format":"list",
+                    "coordinates":"number",
+                    "arrow_in_2d_array":False,
+                    "None_or_minus_one": "minus_one"}
+
+    if action_format=='default':
+        action_dict = default
+    elif action_format=='compressed':
+        action_dict = compressed
+    elif isinstance(action_format,dict):
+        # print(action_format)
+        action_dict = {k: (action_format[k] if k in action_format else v) 
+                        for k, v in default.items()}
+        # print(action_dict)
+    else:
+        action_dict = default  # like default
+
+    alphabet = ' abcdefghijklmnopqrstuvwxyz'
+    alpha_to_num = {letter: i for i, letter in enumerate(alphabet)}
+    alpha_to_num.update({LETTER.upper(): i for i, LETTER in enumerate(alphabet)})
+
+    # define the coordinate conversion
+    if action_dict["coordinates"] == 'chess' and action_dict["None_or_minus_one"] == "none":
+        def c_conv(xy):
+            x = (alpha_to_num[xy[0]] if xy[0] in alpha_to_num else 0) 
+            y = (xy[1] if xy[1] is not None else 0) 
+            return [x - 1, y - 1]
+    elif action_dict["coordinates"] == 'chess' and action_dict["None_or_minus_one"] == "minus_one":
+        def c_conv(xy):
+            x = (alpha_to_num[xy[0]] if xy[0] in alpha_to_num else 0) 
+            y = (xy[1] if xy[1]>0 else 0) 
+            return [x - 1, y - 1]
+    elif action_dict["coordinates"] == 'number' and action_dict["None_or_minus_one"] == "none":
+        def c_conv(xy):
+            return [(-1 if z is None else z - 1) for z in xy]
+    elif action_dict["coordinates"] == 'number' and action_dict["None_or_minus_one"] == "minus_one":
+        def c_conv(xy):
+            return [(-1 if z<=0 else z - 1) for z in xy]
+    elif action_dict["coordinates"] == 'python' and action_dict["None_or_minus_one"] == "none":
+        def c_conv(xy):
+            return [(-1 if z is None else z) for z in xy]
+    elif action_dict["coordinates"] == 'python' and action_dict["None_or_minus_one"] == "minus_one":
+        def c_conv(xy):
+            return [(-1 if z<=-1 else z) for z in xy]
+    else:
+        def c_conv(xy):
+            return [(-1 if z<=-1 else z) for z in xy]
+
+    # define the dict conversion
+    if action_dict["format"] == 'dictionary' and action_dict["arrow_in_2d_array"]==False:
+        def d_conv(ac):
+            return ac["pebble"], ac["arrow"][0:2], ac["arrow"][2:4]
+    elif action_dict["format"] == 'dictionary' and action_dict["arrow_in_2d_array"]==True:
+        def d_conv(ac):
+            return ac["pebble"], ac["arrow"][0], ac["arrow"][1]
+    elif action_dict["format"] == 'single_list' and action_dict["arrow_in_2d_array"]==False:
+        def d_conv(ac):
+            return ac[0:2], ac[2:4], ac[4:6]
+    elif action_dict["format"] == 'single_list' and action_dict["arrow_in_2d_array"]==True:
+        def d_conv(ac):
+            return ac[0:2], ac[3][0], ac[3][1]
+    elif action_dict["format"] == 'list_of_lists' and action_dict["arrow_in_2d_array"]==False:
+        def d_conv(ac):
+            return ac[0], ac[1][0:2], ac[1][2:4]
+    elif action_dict["format"] == 'list_of_lists' and action_dict["arrow_in_2d_array"]==True:
+        def d_conv(ac):
+            return ac[0], ac[1][0], ac[1][1]
+    else:
+        def d_conv(ac):
+            return ac[0:2], ac[2:4], ac[4:6]
+
+
+    if all([compressed[k] == v for k, v in action_dict.items()]):
+        def fun(ac):
+            return ac
+    else:
+        def fun(ac):
+            peb, source, target = d_conv(ac)
+            return c_conv(peb) + c_conv(source) + c_conv(target)
+    
+    return fun
+
