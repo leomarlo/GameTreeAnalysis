@@ -15,12 +15,19 @@ class Sotf():
         self.field_size = field_size
         self.peb_total = self.nr_players * self.peb
 
+        self.action = None
         self.done = False
 
         self.either_peb_or_arrow=True
         self.any_or_all_arrows="all"
         self.stage="placing"
         self.win_by = "survivors" # can also be "degree"
+
+        # encoding and decoding functions for pebble and arrow states respectively.
+        self.enc_peb, self.dec_peb = encode_state(multipl=self.nr_players + 1,
+                                        size=self.field_size)
+        self.enc_arr, self.dec_arr = encode_state(multipl=self.nr_players + 1,
+                                        size=self.peb_total)
 
         self.convert_action = turn_into_action(action_format=action_format)
         self.scores = [0]*self.nr_players
@@ -65,6 +72,9 @@ class Sotf():
                                         'target_id': np.nan * np.ones(self.nr_players * self.arr),
                                         'placed': np.zeros(self.nr_players * self.arr)},dtype=int)
         # self.placed_pebbles= pd.DataFrame(columns = ['id','player','x','y','deg'],dtype=int)
+
+        # space of possibilities
+        self.space_of_poss = pd.Data
 
         self.finish_when_any_or_all_arrows_are_gone='any'
 
@@ -323,6 +333,7 @@ class Sotf():
         self.stage = "placing"
         self.win_by = "survivors"  # can also be "degree"
         self.done = False
+        self.action = None
 
         self.scores = [0] * self.nr_players
         self.rewards = [0] * self.nr_players
@@ -525,3 +536,35 @@ def turn_into_action(action_format='default'):
     
     return fun
 
+
+
+def encode_state(multipl,size):
+
+    # return sum([s * (multipl ** i) for i,s in enumerate(state.flatten())])
+    def encode(state):
+        string_encoded = ''.join(state.flatten().astype('U'))
+        return int(string_encoded,multipl)
+
+    def decode(number):
+        string_decoded = str_base(number=number, base=multipl)
+        if string_decoded=='0':
+            padded_string = '0'*(size**2)
+        else:
+            padded_string = '0'*(size**2 - len(string_decoded)) + string_decoded
+        return np.array(list(padded_string)).astype(int).reshape(size,size)
+    
+    return encode, decode
+
+
+def digit_to_char(digit):
+    if digit < 10:
+        return str(digit)
+    return chr(ord('a') + digit - 10)
+
+def str_base(number,base):
+    if number < 0:
+        return '-' + str_base(-number, base)
+    (d, m) = divmod(number, base)
+    if d > 0:
+        return str_base(d, base) + digit_to_char(m)
+    return digit_to_char(m)
