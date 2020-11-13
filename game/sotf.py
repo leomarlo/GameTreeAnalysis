@@ -450,6 +450,7 @@ def turn_into_action(action_format='default'):
     """
 
     # default
+
     default = {"format":"dictionary",
                 "coordinates":"chess",
                 "arrow_in_2d_array":True,
@@ -537,8 +538,22 @@ def turn_into_action(action_format='default'):
     
     return fun
 
-# def encode_df(df, type='arrow'):
-#     df
+def encode_pebble_df(df):
+    return '.'.join(sorted([''.join(a) for a in df.loc[df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
+
+def decode_pebble_df(st, pebbles, player):
+    pebs = [pebbles]*player
+    dics = []
+    for i,bb in enumerate(st.split('.')):
+        player = int(bb[0])
+        dic = {'player': player, 'x':float(bb[1]), 'y': float(bb[2]), 'id':i, 'placed':1, 'deg':bb[3]}
+        dics.append(dic)
+        pebs[player-1]-=1
+    layed_df = pd.DataFrame(dics)
+    rest = [{'player': i + 1, 'x':np.nan, 'y':np.nan, 'deg':0, 'placed':0} for i,peb in enumerate(pebs) for j in range(peb)]
+    rest_df = pd.DataFrame(rest)
+    rest_df['id'] = rest_df.index + i + 1
+    return layed_df.append(rest_df)
 
 # self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
 #                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
