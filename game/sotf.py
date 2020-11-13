@@ -7,7 +7,7 @@ class Sotf():
 
     metadata = {'render.modes': ['human', 'console']}
 
-    def __init__(self,peb,arr,nr_players,field_size,action_format='dictionar'):
+    def __init__(self,peb,arr,nr_players,field_size,action_format='default'):
         self.peb = peb
         self.arr = arr
         self.nr_players = nr_players
@@ -74,7 +74,7 @@ class Sotf():
         # self.placed_pebbles= pd.DataFrame(columns = ['id','player','x','y','deg'],dtype=int)
 
         # space of possibilities
-        self.space_of_poss = pd.Data
+        # self.space_of_poss = pd.Data
 
         self.finish_when_any_or_all_arrows_are_gone='any'
 
@@ -150,7 +150,8 @@ class Sotf():
 
         if self.stage == "placing":
 
-            converted_action = self.convert_action(action)
+            converted_action = self.convert_action(ac=action)
+            self.action = converted_action
             some_pebble = converted_action[0] >= 0
             some_arrow = converted_action[2] >= 0
             if self.either_peb_or_arrow:
@@ -535,6 +536,27 @@ def turn_into_action(action_format='default'):
             return c_conv(peb) + c_conv(source) + c_conv(target)
     
     return fun
+
+# def encode_df(df, type='arrow'):
+#     df
+
+# self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
+#                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
+#                                         'x': np.nan * np.ones(self.peb_total),
+#                                         'y': np.nan * np.ones(self.peb_total),
+#                                         'deg': np.zeros(self.peb_total),
+#                                         'placed': np.zeros(self.peb_total)}, dtype=int)
+#         self.arrows_df = pd.DataFrame({'id': list(range(self.nr_players * self.arr)),
+#                                        'player': np.repeat(list(range(1, self.nr_players + 1)), self.arr),
+#                                        'source_id': np.nan * np.ones(self.nr_players * self.arr),
+#                                        'target_id': np.nan * np.ones(self.nr_players * self.arr),
+#                                        'placed': np.zeros(self.nr_players * self.arr)}, dtype=int)
+
+# def encode_state(current_player, pebbles_df, arrows_df):
+
+
+# def decode_state():
+#     pass
 
 
 
