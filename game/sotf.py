@@ -538,8 +538,15 @@ def turn_into_action(action_format='default'):
     
     return fun
 
-def encode_pebble_df(df):
-    return '.'.join(sorted([''.join(a) for a in df.loc[df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
+def encode_pebble_df(peb_df, arr_df):
+    peb_str =  '.'.join(sorted([''.join(a) for a in peb_df.loc[peb_df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
+    arr_str_list = []
+    source_n_target = ["source_id", "target_id"]
+    for i, row in arr_df.loc[arr_df.placed==1, ['player'] + source_n_target].iterrows():
+        arr_str_i = ''.join([ pos for f in source_n_target for pos in peb_df.loc[peb_df.id==row[f],['x','y']].values[0].astype(int).astype('U')])
+        arr_str_list.append(str(int(row['player'])) + arr_str_i)
+    arr_str = '.'.join(arr_str_list)
+    return peb_str, arr_str
 
 def decode_pebble_df(st, pebbles, player):
     pebs = [pebbles]*player
