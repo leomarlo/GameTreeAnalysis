@@ -327,6 +327,58 @@ class Sotf():
     def reward(self):
         return None
 
+    def options(self):
+        # pebble options are all the vacant spots, if you have pebbles left.
+
+        # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
+        
+        # everything should be in a decoded form.
+        return None
+
+    def encode_df(self):
+        peb_str =  '.'.join(sorted([''.join(a) for a in self.pebbles_df.loc[self.pebbles_df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
+        arr_str_list = []
+        source_n_target = ["source_id", "target_id"]
+        for i, row in self.arrows_df.loc[self.arrows_df.placed==1, ['player'] + source_n_target].iterrows():
+            arr_str_i = ''.join([ pos for f in source_n_target for pos in self.pebbles_df.loc[self.pebbles_df.id==row[f],['x','y']].values[0].astype(int).astype('U')])
+            arr_str_list.append(str(int(row['player'])) + arr_str_i)
+        arr_str = '.'.join(sorted(arr_str_list))
+        return peb_str, arr_str
+
+    def decode_state(self, peb_str, arr_str):
+        pebs = [self.peb]*self.nr_players
+        dics = []
+        for i,bb in enumerate(peb_str.split('.')):
+            player = int(bb[0])
+            dic = {'player': player, 'x':float(bb[1]), 'y': float(bb[2]), 'id':i, 'placed':1, 'deg':bb[3]}
+            dics.append(dic)
+            pebs[player-1]-=1
+        layed_peb_df = pd.DataFrame(dics)
+        rest = [{'player': i + 1, 'x':np.nan, 'y':np.nan, 'deg':0, 'placed':0} for i,peb in enumerate(pebs) for j in range(peb)]
+        rest_df = pd.DataFrame(rest)
+        rest_df['id'] = rest_df.index + i + 1
+        peb_df = layed_peb_df.append(rest_df)
+        # TODO; index still screwed up
+        del dics
+        # and now for the arrows
+        arrs = [self.arr]*self.nr_player
+        dics = []
+        for i,aa in enumerate(arr_str.split('.')):
+            player = int(aa[0])
+            # TODO: SOMEHOW THESE ARE EMPTY.
+            source_id = layed_peb_df[(layed_peb_df.x==float(aa[1])) & (layed_peb_df.y==float(aa[2]))].id.values[0]
+            target_id = layed_peb_df[(layed_peb_df.x==float(aa[3])) & (layed_peb_df.y==float(aa[4]))].id.values[0]
+            dic = {'id':i, 'player': player, 'source_id': source_id, 'target_id': target_id, 'placed':1}
+            dics.append(dic)
+            arrs[player-1]-=1
+        layed_arr_df = pd.DataFrame(dics)
+        rest = [{'player': i + 1, 'source_id':np.nan, 'target_id':np.nan, 'placed':0} for i,arr in enumerate(arrs) for j in range(arr)]
+        rest_df = pd.DataFrame(rest)
+        rest_df['id'] = rest_df.index + i + 1
+        arr_df = layed_arr_df.append(rest_df)
+
+        return peb_df, arr_df
+
     def reset(self):
         self.current_player = 1
         self.either_peb_or_arrow = True
@@ -538,68 +590,17 @@ def turn_into_action(action_format='default'):
     
     return fun
 
-def encode_pebble_df(peb_df, arr_df):
+def encode_df_fun(peb_df, arr_df):
     peb_str =  '.'.join(sorted([''.join(a) for a in peb_df.loc[peb_df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
     arr_str_list = []
     source_n_target = ["source_id", "target_id"]
     for i, row in arr_df.loc[arr_df.placed==1, ['player'] + source_n_target].iterrows():
         arr_str_i = ''.join([ pos for f in source_n_target for pos in peb_df.loc[peb_df.id==row[f],['x','y']].values[0].astype(int).astype('U')])
         arr_str_list.append(str(int(row['player'])) + arr_str_i)
-    arr_str = '.'.join(arr_str_list)
+    arr_str = '.'.join(sorted(arr_str_list))
     return peb_str, arr_str
 
-def decode_pebble_df(peb_str, arr_str, pebbles, arrows, player):
-    pebs = [pebbles]*player
-    dics = []
-    for i,bb in enumerate(peb_str.split('.')):
-        player = int(bb[0])
-        dic = {'player': player, 'x':float(bb[1]), 'y': float(bb[2]), 'id':i, 'placed':1, 'deg':bb[3]}
-        dics.append(dic)
-        pebs[player-1]-=1
-    layed_peb_df = pd.DataFrame(dics)
-    rest = [{'player': i + 1, 'x':np.nan, 'y':np.nan, 'deg':0, 'placed':0} for i,peb in enumerate(pebs) for j in range(peb)]
-    rest_df = pd.DataFrame(rest)
-    rest_df['id'] = rest_df.index + i + 1
-    peb_df = layed_peb_df.append(rest_df)
-    # TODO; index still screwed up
-    del dics
-    # and now for the arrows
-    arrs = [arrows]*player
-    dics = []
-    for i,aa in enumerate(arr_str.split('.')):
-        player = int(aa[0])
-        # TODO: SOMEHOW THESE ARE EMPTY.
-        source_id = layed_peb_df[(layed_peb_df.x==float(aa[1])) && (layed_peb_df.y==aa[2])].id.values
-        target_id = layed_peb_df[(layed_peb_df.x==float(aa[3])) && (layed_peb_df.y==aa[4])].id.values
-        dic = {'id':i, 'player': player, 'source_id': source_id, 'target_id': target_id, 'placed':1}
-        dics.append(dic)
-        arrs[player-1]-=1
-    layed_arr_df = pd.DataFrame(dics)
-    rest = [{'player': i + 1, 'source_id':np.nan, 'target_id':np.nan, 'placed':0} for i,arr in enumerate(arrs) for j in range(arr)]
-    rest_df = pd.DataFrame(rest)
-    rest_df['id'] = rest_df.index + i + 1
-    arr_df = layed_arr_df.append(rest_df)
 
-    # TODO; index still screwed up
-    return peb_df, arr_df
-
-# self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
-#                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
-#                                         'x': np.nan * np.ones(self.peb_total),
-#                                         'y': np.nan * np.ones(self.peb_total),
-#                                         'deg': np.zeros(self.peb_total),
-#                                         'placed': np.zeros(self.peb_total)}, dtype=int)
-#         self.arrows_df = pd.DataFrame({'id': list(range(self.nr_players * self.arr)),
-#                                        'player': np.repeat(list(range(1, self.nr_players + 1)), self.arr),
-#                                        'source_id': np.nan * np.ones(self.nr_players * self.arr),
-#                                        'target_id': np.nan * np.ones(self.nr_players * self.arr),
-#                                        'placed': np.zeros(self.nr_players * self.arr)}, dtype=int)
-
-# def encode_state(current_player, pebbles_df, arrows_df):
-
-
-# def decode_state():
-#     pass
 
 
 
