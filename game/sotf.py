@@ -328,6 +328,7 @@ class Sotf():
         return None
 
     def options(self):
+        # no action should also be allowed.
         # pebble options are all the vacant spots, if you have pebbles left.
 
         # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
@@ -358,14 +359,12 @@ class Sotf():
         rest_df = pd.DataFrame(rest)
         rest_df['id'] = rest_df.index + i + 1
         peb_df = layed_peb_df.append(rest_df)
-        # TODO; index still screwed up
         del dics
         # and now for the arrows
-        arrs = [self.arr]*self.nr_player
+        arrs = [self.arr]*self.nr_players
         dics = []
         for i,aa in enumerate(arr_str.split('.')):
             player = int(aa[0])
-            # TODO: SOMEHOW THESE ARE EMPTY.
             source_id = layed_peb_df[(layed_peb_df.x==float(aa[1])) & (layed_peb_df.y==float(aa[2]))].id.values[0]
             target_id = layed_peb_df[(layed_peb_df.x==float(aa[3])) & (layed_peb_df.y==float(aa[4]))].id.values[0]
             dic = {'id':i, 'player': player, 'source_id': source_id, 'target_id': target_id, 'placed':1}
