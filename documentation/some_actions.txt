@@ -1,0 +1,12 @@
+
+acts = 
+[{'pebble': ['A', 1], 'arrow': [[None, None], [None, None]]},
+ {'pebble': ['C', 2], 'arrow': [[None, None], [None, None]]},
+ {'pebble': ['D', 3], 'arrow': [[None, None], [None, None]]},
+ {'pebble': ['A', 4], 'arrow': [[None, None], [None, None]]}]
+
+
+aacts
+{'pebble': [None, None], 'arrow': [['D', 3], ['A', 1]]},
+{'pebble': [None, None], 'arrow': [['A', 1], ['C', 2]]},
+{'pebble': [None, None], 'arrow': [['c', 2], ['D', 3]]}

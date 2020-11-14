@@ -548,19 +548,40 @@ def encode_pebble_df(peb_df, arr_df):
     arr_str = '.'.join(arr_str_list)
     return peb_str, arr_str
 
-def decode_pebble_df(st, pebbles, player):
+def decode_pebble_df(peb_str, arr_str, pebbles, arrows, player):
     pebs = [pebbles]*player
     dics = []
-    for i,bb in enumerate(st.split('.')):
+    for i,bb in enumerate(peb_str.split('.')):
         player = int(bb[0])
         dic = {'player': player, 'x':float(bb[1]), 'y': float(bb[2]), 'id':i, 'placed':1, 'deg':bb[3]}
         dics.append(dic)
         pebs[player-1]-=1
-    layed_df = pd.DataFrame(dics)
+    layed_peb_df = pd.DataFrame(dics)
     rest = [{'player': i + 1, 'x':np.nan, 'y':np.nan, 'deg':0, 'placed':0} for i,peb in enumerate(pebs) for j in range(peb)]
     rest_df = pd.DataFrame(rest)
     rest_df['id'] = rest_df.index + i + 1
-    return layed_df.append(rest_df)
+    peb_df = layed_peb_df.append(rest_df)
+    # TODO; index still screwed up
+    del dics
+    # and now for the arrows
+    arrs = [arrows]*player
+    dics = []
+    for i,aa in enumerate(arr_str.split('.')):
+        player = int(aa[0])
+        # TODO: SOMEHOW THESE ARE EMPTY.
+        source_id = layed_peb_df[(layed_peb_df.x==float(aa[1])) && (layed_peb_df.y==aa[2])].id.values
+        target_id = layed_peb_df[(layed_peb_df.x==float(aa[3])) && (layed_peb_df.y==aa[4])].id.values
+        dic = {'id':i, 'player': player, 'source_id': source_id, 'target_id': target_id, 'placed':1}
+        dics.append(dic)
+        arrs[player-1]-=1
+    layed_arr_df = pd.DataFrame(dics)
+    rest = [{'player': i + 1, 'source_id':np.nan, 'target_id':np.nan, 'placed':0} for i,arr in enumerate(arrs) for j in range(arr)]
+    rest_df = pd.DataFrame(rest)
+    rest_df['id'] = rest_df.index + i + 1
+    arr_df = layed_arr_df.append(rest_df)
+
+    # TODO; index still screwed up
+    return peb_df, arr_df
 
 # self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
 #                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
