@@ -19,15 +19,9 @@ class Sotf():
         self.done = False
 
         self.either_peb_or_arrow=True
-        self.any_or_all_arrows="all"
+        self.any_or_all_arrows="any"
         self.stage="placing"
         self.win_by = "survivors" # can also be "degree"
-
-        # encoding and decoding functions for pebble and arrow states respectively.
-        self.enc_peb, self.dec_peb = encode_state(multipl=self.nr_players + 1,
-                                        size=self.field_size)
-        self.enc_arr, self.dec_arr = encode_state(multipl=self.nr_players + 1,
-                                        size=self.peb_total)
 
         self.convert_action = turn_into_action(action_format=action_format)
         self.scores = [0]*self.nr_players
@@ -39,8 +33,6 @@ class Sotf():
 
         # for rendering
         self.screen = None
-        # self.board = None
-        # self.last_board = deepcopy(self.board)
 
 
         # peb_state assigns a player number to each point on the field matrix
@@ -48,9 +40,12 @@ class Sotf():
         # arr_state assigns a player number to each link in the adjacency matrix
         self.arr_state = np.zeros([self.peb_total, self.peb_total],dtype=int)
         # toDo: maybe just field_size x self.arr dimensional
-
         self.state = {'pebbles':self.peb_state, 'arrows':self.arr_state}
-
+        
+        initial_ply_hash = str(self.current_player)
+        initial_peb_hash = ''
+        initial_arr_hash = ''
+        self.state_hash = '+'.join([initial_ply_hash, initial_peb_hash, initial_arr_hash])
 
         # pebbles
         # holds the in column number
@@ -73,10 +68,22 @@ class Sotf():
                                         'placed': np.zeros(self.nr_players * self.arr)},dtype=int)
         # self.placed_pebbles= pd.DataFrame(columns = ['id','player','x','y','deg'],dtype=int)
 
-        # space of possibilities
-        # self.space_of_poss = pd.Data
-
         self.finish_when_any_or_all_arrows_are_gone='any'
+
+    def initialize_from_state(self, state_hash):
+        state_hash_list = state_hash.split('+')
+        self.current_player = int(state_hash_list[0])
+        self.pebbles_df, self.arrows_df = self.decode_state(
+                                            peb_str=state_hash_list[1],
+                                            arr_str=state_hash_list[2])
+        self.peb_state = self.df_2_state(which='pebbles')
+        self.arr_state = self.df_2_state(which='arrows')
+        self.state = {'pebbles':self.peb_state, 'arrows':self.arr_state}
+        
+        self.stage = "placing"
+        self.scores = [0] * self.nr_players ## TODO; what happens if score is not 0
+        self.rewards = [0] * self.nr_players  ## TODO; what happens if rewards are not 0
+        self.done = False  ## TODO; what happens if its done actually. 
 
 
     def assign_scores(self):
@@ -238,34 +245,38 @@ class Sotf():
                         print("choose an occupied source grid point")
                     else:
                         print("choose different grid points")
-
+                
             else:
                 print('no action is chosen')
 
+            #update state hash 
+            pl = next_player(current_player=self.current_player, nr_players=self.nr_players)
+            self.state_hash = self.append_state_hash_from_action(action=converted_action, player=pl)
 
             # trigger extinction wave(s)??
             if self.last_move():
                 self.stage = "extinction-triggered"
-                print(self.stage)
-                print('before extinction the scores are ')
-                print(self.scores)
+                # print(self.stage)
+                # print('before extinction the scores are ')
+                # print(self.scores)
                 self.extinction_waves()
                 # set scores
                 self.assign_scores()
-                print('after extinction wave and after assigning scores the scores are ')
-                print(self.scores)
+                # print('after extinction wave and after assigning scores the scores are ')
+                # print(self.scores)
                 self.stage = "extinction-rewards"
                 # set rewards
                 self._assign_rewards()  
-                print('This translates into the following rewards ')
-                print(self.rewards)
+                # print('This translates into the following rewards ')
+                # print(self.rewards)
                 self.done = True
 
         else:
             # we are not placing anymore
             # or rather placing does not affect the board, just everyone gets her or his reward for the game
             pass
-
+        
+        
         self.update_player()
         reward = 0
         info = 'nothing'
@@ -307,7 +318,6 @@ class Sotf():
                     self.rewards = [ -1 + 2*(sc-min_score)/(max_score-min_score) for sc in self.scores]
         return None
 
-
     def update_player(self):
         self.current_player= (self.current_player)%self.nr_players +1
 
@@ -315,7 +325,7 @@ class Sotf():
     def last_move(self):
         arr_depletion = [all(self.arrows_df.loc[self.arrows_df.player == pl + 1, "placed"])
                          for pl in range(self.nr_players)]
-        print(arr_depletion)
+        # print(arr_depletion)
         if self.any_or_all_arrows=="any":
             return any(arr_depletion)
         elif self.any_or_all_arrows=="all":
@@ -327,14 +337,72 @@ class Sotf():
     def reward(self):
         return None
 
-    def options(self):
-        # no action should also be allowed.
-        # pebble options are all the vacant spots, if you have pebbles left.
-
-        # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
+    def options(self, which_player='current'):
+        if which_player=='current':
+            pl = self.current_player
+        elif which_player=='next':
+            pl = next_player(current_player=self.current_player, nr_players=self.nr_players)
+        else:
+            pl = self.current_player
         
         # everything should be in a decoded form.
-        return None
+
+        # no action should also be allowed.
+        peb_none = [-1,-1]
+        arr_none = [-1,-1,-1,-1]
+        opts = [peb_none + arr_none]
+
+        if not self.pebbles_df[(self.pebbles_df.player==pl) & (self.pebbles_df.placed==0)].empty:
+            # should the players turn also be included in the state of the game?
+            # pebble options are all the vacant spots, if you have pebbles left.
+            peb_opts = np.argwhere(self.state['pebbles']==0).tolist()
+            for po in peb_opts:
+                opts.append(po + arr_none)
+        if not self.arrows_df[(self.arrows_df.player==pl) & (self.arrows_df.placed==0)].empty:
+            # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
+            pebs = self.pebbles_df.loc[self.pebbles_df.placed==1,['id','x','y']].astype(int).to_dict(orient='list')
+            adj = self.state['arrows'][pebs['id']][:,pebs['id']]
+            arr_opts = [[pebs['x'][link[0]], pebs['y'][link[0]], pebs['x'][link[1]], pebs['y'][link[1]]] for link in np.argwhere(adj==0) if link[0]!=link[1]]
+            for ao in arr_opts:
+                opts.append(peb_none + ao)
+        
+        
+        return {self.append_state_hash_from_action(action=op, player=pl):op for op in opts}
+        # return opts
+
+    def append_state_hash_from_action(self, action, player):
+        peb_action = action[0:2]
+        arr_action = action[2:6]
+        p_bool = peb_action[0]!=-1;
+        a_bool = arr_action[0]!=-1;
+        # next_player = next_player(self.current_player, self.nr_players)
+
+        state_hash_list = self.state_hash.split('+')
+        if p_bool or a_bool:
+            peb_state_hash = state_hash_list[1]
+            if p_bool:
+                peb_action_str = ''.join([str(pa) for pa in peb_action])
+                new_pebble = [str(player) + peb_action_str + '0']
+
+                peb_state_hash_list = (peb_state_hash.split('.') if len(peb_state_hash)!=0 else [])
+                peb_state_hash = '.'.join(sorted(peb_state_hash_list + new_pebble))
+                state_hash = str(player) + '+' + peb_state_hash + '+' + state_hash_list[2]
+            if a_bool:
+                # can also be both pebble and arrow
+                # update the arrow hash
+                arr_action_str = ''.join([str(a) for a in arr_action])
+                new_arrow = [str(player) + arr_action_str]
+                arr_state_hash_list = (state_hash_list[2].split('.') if len(state_hash_list[2])!=0 else [])
+                arr_state_hash = '.'.join(sorted(arr_state_hash_list + new_arrow))
+                # update the pebbles hashes
+                peb_state_hash = '.'.join([(ps[0:3] + str(int(ps[3])+1) if ps[1]==str(arr_action[2]) and ps[2]==str(arr_action[3]) else ps) for ps in peb_state_hash.split('.')])
+                
+                state_hash = str(player) + '+' + peb_state_hash + '+' + arr_state_hash
+        else:
+            state_hash = str(player) + '+' + state_hash_list[1] + '+' + state_hash_list[2]
+        
+
+        return state_hash
 
     def encode_df(self):
         peb_str =  '.'.join(sorted([''.join(a) for a in self.pebbles_df.loc[self.pebbles_df.placed==1,['player','x','y','deg']].values.astype(int).astype('U')]))
@@ -378,6 +446,19 @@ class Sotf():
 
         return peb_df, arr_df
 
+    def df_2_state(self, which='pebbles'):
+        if which=='pebbles':
+            state = np.zeros((self.field_size, self.field_size), dtype=int)
+            for ri, row in self.pebbles_df[self.pebbles_df.placed==1].iterrows():
+                state[int(row['x']), int(row['y'])] = int(row['player'])
+            return state 
+        elif which=='arrows':
+            state = np.zeros((self.peb_total, self.peb_total), dtype=int)
+            for ri, row in self.arrows_df[self.arrows_df.placed==1].iterrows():
+                state[int(row['source_id']),int(row['target_id'])] = int(row['player'])
+            return state
+
+
     def reset(self):
         self.current_player = 1
         self.either_peb_or_arrow = True
@@ -401,6 +482,12 @@ class Sotf():
         self.state['pebbles'] = self.peb_state
         self.state['arrows'] = self.arr_state
 
+        initial_ply_hash = str(self.current_player)
+        initial_peb_hash = ''
+        initial_arr_hash = ''
+        self.state_hash = '+'.join([initial_ply_hash, initial_peb_hash, initial_arr_hash])
+
+
         self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
                                         'x': np.nan * np.ones(self.peb_total),
@@ -422,51 +509,10 @@ class Sotf():
             print(self.state)
         elif mode == "human":
             print(self.state)
-        #     try:
-        #         import pygame
-        #         from pygame import gfxdraw
-        #     except ImportError as e:
-        #         raise error.DependencyNotInstalled(
-        #             "{}. (HINT: install pygame using `pip install pygame`".format(e))
-        #     if close:
-        #         pygame.quit()
-        #     else:
-        #         if self.screen is None:
-        #             pygame.init()
-        #             self.screen = pygame.display.set_mode(
-        #                 (round(self.window_width), round(self.window_height)))
-        #         clock = pygame.time.Clock()
-        #
-        #         # Draw old bubbles
-        #         self.screen.fill((255, 255, 255))
-        #         for row in range(self.array_height):
-        #             for column in range(self.array_width):
-        #                 if self.last_board[row][column].color is not None:
-        #                     bubble = self.last_board[row][column]
-        #                     pygame.gfxdraw.filled_circle(
-        #                         self.screen, round(
-        #                             bubble.center_x), round(
-        #                             bubble.center_y), self.bubble_radius, bubble.color)
-        #         pygame.display.update()
-        #
-        #         # Draw flying bubble
-        #         last_x, last_y = None, None
-        #         for position in self.last_positions:
-        #             if last_x is not None and last_y is not None:
-        #                 pygame.gfxdraw.filled_circle(
-        #                     self.screen, round(
-        #                         last_x), round(
-        #                         last_y), self.bubble_radius, (255, 255, 255))
-        #             last_x, last_y = position[0], position[1]
-        #             pygame.gfxdraw.filled_circle(
-        #                 self.screen, round(
-        #                     position[0]), round(
-        #                     position[1]), self.bubble_radius, self.last_color)
-        #             pygame.display.update()
-        #             clock.tick(self.metadata["video.frames_per_second"])
-        # print(self.state)
 
 
+def next_player(current_player, nr_players):
+    return (current_player)%nr_players +1
 
 
 def turn_into_action(action_format='default'):
