@@ -7,7 +7,6 @@ peb = 4; arr = 6; nr_players = 3; field_size = 5;
 
 game = Sotf(peb=peb,arr=arr, nr_players=nr_players,field_size=field_size,action_format='compressed')
 
-game_over = False
 
 
 #%%
@@ -15,6 +14,7 @@ game_over = False
 nodes = []
 edges = []
 prevs = game.state_hash
+game_over = False
 while not game_over:
     opts = game.options()
     chos = choice([o for o in opts])

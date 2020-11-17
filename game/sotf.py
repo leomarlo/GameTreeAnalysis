@@ -365,8 +365,6 @@ class Sotf():
             arr_opts = [[pebs['x'][link[0]], pebs['y'][link[0]], pebs['x'][link[1]], pebs['y'][link[1]]] for link in np.argwhere(adj==0) if link[0]!=link[1]]
             for ao in arr_opts:
                 opts.append(peb_none + ao)
-        
-        
         return {self.append_state_hash_from_action(action=op, player=pl):op for op in opts}
         # return opts
 
