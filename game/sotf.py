@@ -337,7 +337,7 @@ class Sotf():
     def reward(self):
         return None
 
-    def options(self, which_player='current'):
+    def options(self, which_player='next'):
         if which_player=='current':
             pl = self.current_player
         elif which_player=='next':
@@ -415,31 +415,37 @@ class Sotf():
     def decode_state(self, peb_str, arr_str):
         pebs = [self.peb]*self.nr_players
         dics = []
-        for i,bb in enumerate(peb_str.split('.')):
+        peb_list = (peb_str.split('.') if len(peb_str)>0 else [])
+        rest_surplus_index = 0
+        for i,bb in enumerate(peb_list):
             player = int(bb[0])
             dic = {'player': player, 'x':float(bb[1]), 'y': float(bb[2]), 'id':i, 'placed':1, 'deg':bb[3]}
             dics.append(dic)
             pebs[player-1]-=1
+            rest_surplus_index +=1
         layed_peb_df = pd.DataFrame(dics)
         rest = [{'player': i + 1, 'x':np.nan, 'y':np.nan, 'deg':0, 'placed':0} for i,peb in enumerate(pebs) for j in range(peb)]
         rest_df = pd.DataFrame(rest)
-        rest_df['id'] = rest_df.index + i + 1
+        rest_df['id'] = rest_df.index + rest_surplus_index
         peb_df = layed_peb_df.append(rest_df)
         del dics
         # and now for the arrows
         arrs = [self.arr]*self.nr_players
         dics = []
-        for i,aa in enumerate(arr_str.split('.')):
+        arr_list = (arr_str.split('.') if len(arr_str)>0 else [])
+        rest_surplus_index = 0
+        for i,aa in enumerate(arr_list):
             player = int(aa[0])
             source_id = layed_peb_df[(layed_peb_df.x==float(aa[1])) & (layed_peb_df.y==float(aa[2]))].id.values[0]
             target_id = layed_peb_df[(layed_peb_df.x==float(aa[3])) & (layed_peb_df.y==float(aa[4]))].id.values[0]
             dic = {'id':i, 'player': player, 'source_id': source_id, 'target_id': target_id, 'placed':1}
             dics.append(dic)
             arrs[player-1]-=1
+            rest_surplus_index += 1
         layed_arr_df = pd.DataFrame(dics)
         rest = [{'player': i + 1, 'source_id':np.nan, 'target_id':np.nan, 'placed':0} for i,arr in enumerate(arrs) for j in range(arr)]
         rest_df = pd.DataFrame(rest)
-        rest_df['id'] = rest_df.index + i + 1
+        rest_df['id'] = rest_df.index + rest_surplus_index
         arr_df = layed_arr_df.append(rest_df)
 
         return peb_df, arr_df

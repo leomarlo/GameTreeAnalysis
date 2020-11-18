@@ -1,0 +1,13 @@
+whenever the N_children_to_terminal increments by one, we should check whether it hits the limit.
+
+when do i assign terminal to a node
+
+what about circles (they exist!)
+
+['N_children']
+
+["leads_to_terminal"]
+
+include multiple paths backpropagate
+
+you must not roll out to a state that is in the up-stream of the node.

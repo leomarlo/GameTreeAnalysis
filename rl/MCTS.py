@@ -22,13 +22,16 @@ class MCTS():
 
         self.g.add_node(node_for_adding=self.game.state_hash, 
                         rewards= np.zeros(self.nr_players),
-                        N=0,
+                        N=0, # number of roll-outs for this node
                         terminal=False,
                         leads_to_terminal=False, # unless there is only one state
                         leaf=True,
                         # uct=0,  # not needed at the moment
+                        N_children=0,
+                        N_leads_to_terminal_child_edges=0,
                         depth=0,
-                        parent=None,
+                        parents=[],
+                        N_parents=0,
                         current_player=int(self.game.state_hash[0]))
       
     def expand(self, node, return_random=True):
@@ -37,39 +40,78 @@ class MCTS():
         current_depth = self.g.nodes[node]['depth']
         self.game.initialize_from_state(node)
         opts = self.game.options()
-        if len(opts)==0:
-            self.g.nodes[node]['terminal']==True
+        children = 0
         # t = self.g.nodes[node]['N']
-        children = []
+        leafs = []
         for child, action in opts.items():
-            self.g.add_edge(u_of_edge=node,
+            
+            if child in self.g.nodes:
+                # in this game cycles are forbidden. Check whether its a cycle or just multiple paths joining.
+                
+                # if its not a cycle, then add the edge, but not the node.
+                # if it is a cycle, then add neither the edge nor the node.
+
+                # check for cycles:
+                condition, _ = self.exists_path(source=child,target=node)
+                if condition:
+                    continue
+
+                self.g.add_edge(u_of_edge=node,
                             v_of_edge=child,
                             leads_to_terminal=False,
                             action=action)
-            if child in self.g.nodes:
+                # increment the N_parents of the 'child' node.
+                self.g.nodes[child]['parents'].append(node)
+                self.g.nodes[child]['N_parents'] += 1
+
+                # check whether the terminal conditions should be added.
                 if self.g.nodes[child]["leads_to_terminal"]:
                     self.g.edges[(node,child)]["leads_to_terminal"] = True
-                continue
-            self.g.add_node(node_for_adding=child,
-                            rewards= np.zeros(self.nr_players),
-                            N=0,
-                            # uct=self.calc_uct(w=0,N=0,t=t),
-                            terminal=False,  # all nodes are initially terminal 
-                            leads_to_terminal=False,
-                            leaf=True,
-                            depth=current_depth+1,
-                            parent=node,
-                            current_player=int(child[0]))
-            children.append(child)
-        
-        if len(children)>0:
-            self.game.nodes[node]['leaf'] = False
-            if return_random:
-                return random.choice(children) 
+                    self.g.nodes[node]['N_leads_to_terminal_child_edges'] += 1
+                    self.propagate_leads_to_terminal(node=edge[0])
             else:
-                return None
-        else:
+                # add first node and then edge
+                self.g.add_node(node_for_adding=child,
+                                rewards=np.zeros(self.nr_players),
+                                N=0,
+                                # uct=self.calc_uct(w=0,N=0,t=t),
+                                terminal=False,  # all nodes are initially terminal 
+                                leads_to_terminal=False,
+                                N_children=0,
+                                N_leads_to_terminal_child_edges=0,
+                                leaf=True,
+                                depth=current_depth+1,
+                                parents=[node],
+                                N_parents=1,
+                                current_player=int(child[0]))
+                self.g.add_edge(u_of_edge=node,
+                                v_of_edge=child,
+                                leads_to_terminal=False,
+                                action=action)
+                leafs.append(child)
+            # note that there might be elements in opts that do not get here.
+            # so children is not just len(opts)
+            children += 1
+        
+        self.g.nodes[node]['N_children']=children
+
+        if children==0:
+            self.g.nodes[node]['terminal']=True
+            self.game.nodes[node]['leaf'] = True
             return None
+        else:
+            # it has children
+            if len(leafs)>0:
+                # and at least one leaf
+                self.game.nodes[node]['leaf'] = False
+                if return_random:
+                    return random.choice(leafs) 
+                else:
+                    return None
+            else:
+                # it has children but no leafs (all edges are going back to the tree itself)
+                self.game.nodes[node]['leaf'] = False
+                return None
         
 
     def select(self,node=None, return_path=[]):
@@ -90,20 +132,28 @@ class MCTS():
         return None
 
 
-    def rollout(self, node):
-        self.game.initialize_from_state(node)
-        game_over = False
-        while not game_over:
-            opts = self.game.options()
-            chos = random.choice([o for o in opts])
-            _, _, game_over, _ = self.game.step(action=opts[chos])
-        return np.array(tweeze_rewards(self.game.rewards))
+    def rollout(self, edge):
+        self.game.initialize_from_state(state_hash=edge[0])
+        _, _, game_over, _ = self.game.step(action=self.g.edges[edge]['action'])
+        if game_over:
+            self.g.nodes[edge[1]]['terminal']=True
+            self.g.edges[edge]['leads_to_terminal']=True
+            self.g.nodes[edge[0]]['N_leads_to_terminal_child_edges'] += 1
+            self.propagate_leads_to_terminal(node=edge[0])
+            return np.array(tweeze_rewards(self.game.rewards))
+        else:
+            while not game_over:
+                opts = self.game.options()
+                chos = random.choice([o for o in opts])
+                _, _, game_over, _ = self.game.step(action=opts[chos])
+            return np.array(tweeze_rewards(self.game.rewards))
     
 
     def create_tree(self, max_iter=100):
         for i in range(max_iter):
             node, reward = self.iteration()
             print( node, reward)
+
 
     def iteration(self):
         leaf_node, return_path = self.select()  # selects any leaf node
@@ -114,15 +164,68 @@ class MCTS():
         if not sel_node:
             print('sel_node is none??')
         return_path.append(sel_node)
-        reward = self.rollout(node=sel_node)
-        self.backpropagate(return_path=return_path, reward=reward)
+        reward = self.rollout(edge=(leaf_node,sel_node))
+        self.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=False)
         return sel_node, reward
        
-    def backpropagate(self, return_path, reward):
-        for node in reversed(return_path):
-            self.g.nodes[node]["reward"] = np.add(self.g.nodes[node]["reward"], reward) 
-            self.g.nodes[node]["N"] += 1
 
+    def backpropagate(self, return_path, reward, including_multiple_paths=False):
+        if including_multiple_paths:
+            for node in reversed(return_path):
+                # increment the reward to each node including the selected node
+                self.g.nodes[node]["reward"] = np.add(self.g.nodes[node]["reward"], reward) 
+                # increment the number of rollouts for that path.
+                self.g.nodes[node]["N"] += 1
+        else:
+            node = return_path[-1]  
+            self.backpropagate_multiple_paths(node=node,
+                                              reward=reward,
+                                              return_path=return_path,
+                                              on_path=len(return_path)-1)
+            
+
+    def backpropagate_multiple_paths(self, node, reward, return_path, on_path):
+        self.g.nodes[node]["reward"] = np.add(self.g.nodes[node]["reward"], reward) 
+        self.g.nodes[node]["N"] += 1
+        parents = self.g.nodes[node]['parents']
+        if len(parents)==0 or on_path==0:
+            return None
+        for parent in parents:
+            if on_path is None:
+                # node is not on return path, but parent might be
+                if parent not in return_path:
+                    # parent doesnt lie in return path
+                    self.backpropagate_multiple_paths(node=parent, reward=reward, return_path=return_path, on_path=None)
+                else:
+                    # parent lies in return path
+                    # do not call the backpropagate_multiple here!!!
+                    pass
+            else:
+                index = on_path - 1
+                if parent == return_path[index]:
+                    # parent lies on return path
+                    self.backpropagate_multiple_paths(node=parent, reward=reward, return_path=return_path, on_path=index)
+                else:
+                    # parent doesnt lie on return path
+                    self.backpropagate_multiple_paths(node=parent, reward=reward, return_path=return_path, on_path=None)
+
+
+    def propagate_leads_to_terminal(self, node):
+        condition = self.g.nodes[node]['N_children'] == self.g.nodes[node]['N_leads_to_terminal_child_edges']
+        if condition:
+            self.g.nodes[node]["leads_to_terminal"] = True
+            for edge in self.g.in_edges(n=node):
+                self.g.edges[edge]["leads_to_terminal"] = True
+                self.g.nodes[edge[0]]['N_leads_to_terminal_child_edges'] += 1
+                self.propagate_leads_to_terminal(node=edge[0])
+
+
+    def exists_path(self, source, target):
+        try: 
+            path = nx.bidirectional_dijkstra(self.g, source, target)
+            return True, path
+        except:
+            return False, []
 
     def calc_uct(self, w, N, t):
         return (w/(N+self.exploration_epsilon)) + self.exploration_coef * np.sqrt( np.log(t) / (N+self.exploration_epsilon))
