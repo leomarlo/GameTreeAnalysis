@@ -97,20 +97,20 @@ class MCTS():
 
         if children==0:
             self.g.nodes[node]['terminal']=True
-            self.game.nodes[node]['leaf'] = True
+            self.g.nodes[node]['leaf'] = True
             return None
         else:
             # it has children
             if len(leafs)>0:
                 # and at least one leaf
-                self.game.nodes[node]['leaf'] = False
+                self.g.nodes[node]['leaf'] = False
                 if return_random:
                     return random.choice(leafs) 
                 else:
                     return None
             else:
                 # it has children but no leafs (all edges are going back to the tree itself)
-                self.game.nodes[node]['leaf'] = False
+                self.g.nodes[node]['leaf'] = False
                 return None
         
 
@@ -165,12 +165,12 @@ class MCTS():
             print('sel_node is none??')
         return_path.append(sel_node)
         reward = self.rollout(edge=(leaf_node,sel_node))
-        self.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=False)
+        self.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=True)
         return sel_node, reward
        
 
     def backpropagate(self, return_path, reward, including_multiple_paths=False):
-        if including_multiple_paths:
+        if not including_multiple_paths:
             for node in reversed(return_path):
                 # increment the reward to each node including the selected node
                 self.g.nodes[node]["reward"] = np.add(self.g.nodes[node]["reward"], reward) 

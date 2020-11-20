@@ -71,6 +71,7 @@ class Sotf():
         self.finish_when_any_or_all_arrows_are_gone='any'
 
     def initialize_from_state(self, state_hash):
+        self.state_hash = state_hash
         state_hash_list = state_hash.split('+')
         self.current_player = int(state_hash_list[0])
         self.pebbles_df, self.arrows_df = self.decode_state(
@@ -188,9 +189,9 @@ class Sotf():
                             self.state['pebbles'] = self.peb_state
 
                             # update pebbles dataframe
-                            self.pebbles_df.at[temp_df.iloc[0, 0], 'x'] = converted_action[0]
-                            self.pebbles_df.at[temp_df.iloc[0, 0], 'y'] = converted_action[1]
-                            self.pebbles_df.at[temp_df.iloc[0, 0], 'placed'] = 1
+                            self.pebbles_df.at[temp_df.id[0], 'x'] = converted_action[0]
+                            self.pebbles_df.at[temp_df.id[0], 'y'] = converted_action[1]
+                            self.pebbles_df.at[temp_df.id[0], 'placed'] = 1
 
 
                         else:
@@ -224,14 +225,14 @@ class Sotf():
                             (self.pebbles_df['x'] == target[0]) & (self.pebbles_df['y'] == target[1])]
 
                         # we check whether there is an arrow there already
-                        if self.arr_state[temp_source.iloc[0, 0], temp_target.iloc[0, 0]] == 0:
-                            self.arr_state[temp_source.iloc[0, 0], temp_target.iloc[0, 0]] = self.current_player
+                        if self.arr_state[temp_source.id[0], temp_target.id[0]] == 0:
+                            self.arr_state[temp_source.id[0], temp_target.id[0]] = self.current_player
                             self.state['arrows'] = self.arr_state
 
                             # update self.arrows_df
-                            self.arrows_df.at[temp_df.iloc[0, 0], 'source_id'] = temp_source.iloc[0, 0]
-                            self.arrows_df.at[temp_df.iloc[0, 0], 'target_id'] = temp_target.iloc[0, 0]
-                            self.arrows_df.at[temp_df.iloc[0, 0], 'placed'] = 1
+                            self.arrows_df.at[temp_source.id[0], 'source_id'] = temp_source.id[0]
+                            self.arrows_df.at[temp_target.id[0], 'target_id'] = temp_target.id[0]
+                            self.arrows_df.at[temp_df.id[0], 'placed'] = 1
 
                             # update self.pebbles_df (update degree) .. only target degree should increase
                             self.pebbles_df.at[temp_target.iloc[0, 0], 'deg'] = self.pebbles_df.loc[temp_target.iloc[0, 0], 'deg'] + 1
@@ -250,8 +251,8 @@ class Sotf():
                 print('no action is chosen')
 
             #update state hash 
-            pl = next_player(current_player=self.current_player, nr_players=self.nr_players)
-            self.state_hash = self.append_state_hash_from_action(action=converted_action, player=pl)
+            npl = next_player(current_player=self.current_player, nr_players=self.nr_players)
+            self.state_hash = self.append_state_hash_from_action(action=converted_action, action_player=self.current_player, turn_player=npl)
 
             # trigger extinction wave(s)??
             if self.last_move():
@@ -337,14 +338,9 @@ class Sotf():
     def reward(self):
         return None
 
-    def options(self, which_player='next'):
-        if which_player=='current':
-            pl = self.current_player
-        elif which_player=='next':
-            pl = next_player(current_player=self.current_player, nr_players=self.nr_players)
-        else:
-            pl = self.current_player
-        
+    def options(self):
+        cpl = self.current_player
+        npl = next_player(current_player=self.current_player, nr_players=self.nr_players)
         # everything should be in a decoded form.
 
         # no action should also be allowed.
@@ -352,23 +348,23 @@ class Sotf():
         arr_none = [-1,-1,-1,-1]
         opts = [peb_none + arr_none]
 
-        if not self.pebbles_df[(self.pebbles_df.player==pl) & (self.pebbles_df.placed==0)].empty:
+        if not self.pebbles_df[(self.pebbles_df.player==npl) & (self.pebbles_df.placed==0)].empty:
             # should the players turn also be included in the state of the game?
             # pebble options are all the vacant spots, if you have pebbles left.
             peb_opts = np.argwhere(self.state['pebbles']==0).tolist()
             for po in peb_opts:
                 opts.append(po + arr_none)
-        if not self.arrows_df[(self.arrows_df.player==pl) & (self.arrows_df.placed==0)].empty:
+        if not self.arrows_df[(self.arrows_df.player==npl) & (self.arrows_df.placed==0)].empty:
             # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
             pebs = self.pebbles_df.loc[self.pebbles_df.placed==1,['id','x','y']].astype(int).to_dict(orient='list')
             adj = self.state['arrows'][pebs['id']][:,pebs['id']]
             arr_opts = [[pebs['x'][link[0]], pebs['y'][link[0]], pebs['x'][link[1]], pebs['y'][link[1]]] for link in np.argwhere(adj==0) if link[0]!=link[1]]
             for ao in arr_opts:
                 opts.append(peb_none + ao)
-        return {self.append_state_hash_from_action(action=op, player=pl):op for op in opts}
+        return {self.append_state_hash_from_action(action=op, action_player=cpl, turn_player=npl):op for op in opts}
         # return opts
 
-    def append_state_hash_from_action(self, action, player):
+    def append_state_hash_from_action(self, action, action_player, turn_player):
         peb_action = action[0:2]
         arr_action = action[2:6]
         p_bool = peb_action[0]!=-1;
@@ -380,24 +376,24 @@ class Sotf():
             peb_state_hash = state_hash_list[1]
             if p_bool:
                 peb_action_str = ''.join([str(pa) for pa in peb_action])
-                new_pebble = [str(player) + peb_action_str + '0']
+                new_pebble = [str(action_player) + peb_action_str + '0']
 
                 peb_state_hash_list = (peb_state_hash.split('.') if len(peb_state_hash)!=0 else [])
                 peb_state_hash = '.'.join(sorted(peb_state_hash_list + new_pebble))
-                state_hash = str(player) + '+' + peb_state_hash + '+' + state_hash_list[2]
+                state_hash = str(turn_player) + '+' + peb_state_hash + '+' + state_hash_list[2]
             if a_bool:
                 # can also be both pebble and arrow
                 # update the arrow hash
                 arr_action_str = ''.join([str(a) for a in arr_action])
-                new_arrow = [str(player) + arr_action_str]
+                new_arrow = [str(action_player) + arr_action_str]
                 arr_state_hash_list = (state_hash_list[2].split('.') if len(state_hash_list[2])!=0 else [])
                 arr_state_hash = '.'.join(sorted(arr_state_hash_list + new_arrow))
                 # update the pebbles hashes
                 peb_state_hash = '.'.join([(ps[0:3] + str(int(ps[3])+1) if ps[1]==str(arr_action[2]) and ps[2]==str(arr_action[3]) else ps) for ps in peb_state_hash.split('.')])
                 
-                state_hash = str(player) + '+' + peb_state_hash + '+' + arr_state_hash
+                state_hash = str(turn_player) + '+' + peb_state_hash + '+' + arr_state_hash
         else:
-            state_hash = str(player) + '+' + state_hash_list[1] + '+' + state_hash_list[2]
+            state_hash = str(turn_player) + '+' + state_hash_list[1] + '+' + state_hash_list[2]
         
 
         return state_hash
