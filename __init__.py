@@ -17,9 +17,9 @@ MC = MCTS(game=game,
 
 leaf_node, return_path = MC.select()  # selects any leaf node
 #%%
-sel_node = MC.expand(node=leaf_node, return_random=True) # expands the graph 
-return_path.append(sel_node)
-reward = MC.rollout(edge=(leaf_node,sel_node))
-MC.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=True)
+# sel_node = MC.expand(node=leaf_node, return_random=True) # expands the graph 
+# return_path.append(sel_node)
+# reward = MC.rollout(edge=(leaf_node,sel_node))
+# MC.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=True)
        
 # %%

@@ -16,6 +16,7 @@ class Sotf():
         self.peb_total = self.nr_players * self.peb
 
         self.action = None
+        self.no_action_count = 0
         self.done = False
 
         self.either_peb_or_arrow=True
@@ -46,7 +47,8 @@ class Sotf():
         initial_peb_hash = ''
         initial_arr_hash = ''
         self.state_hash = '+'.join([initial_ply_hash, initial_peb_hash, initial_arr_hash])
-
+        self.state_hash_prev = ''
+        self.state_terminal = self.state 
         # pebbles
         # holds the in column number
         #    1   -  pebble id
@@ -70,8 +72,9 @@ class Sotf():
 
         self.finish_when_any_or_all_arrows_are_gone='any'
 
-    def initialize_from_state(self, state_hash):
+    def initialize_from_state(self, state_hash, state_hash_prev=''):
         self.state_hash = state_hash
+        self.state_hash_prev = state_hash_prev
         state_hash_list = state_hash.split('+')
         self.current_player = int(state_hash_list[0])
         self.pebbles_df, self.arrows_df = self.decode_state(
@@ -80,12 +83,14 @@ class Sotf():
         self.peb_state = self.df_2_state(which='pebbles')
         self.arr_state = self.df_2_state(which='arrows')
         self.state = {'pebbles':self.peb_state, 'arrows':self.arr_state}
-        
+        self.state_terminal = self.state 
+
         self.stage = "placing"
         self.scores = [0] * self.nr_players ## TODO; what happens if score is not 0
         self.rewards = [0] * self.nr_players  ## TODO; what happens if rewards are not 0
         self.done = False  ## TODO; what happens if its done actually. 
 
+        self.no_action_count = 0
 
     def assign_scores(self):
         if self.win_by=="survivors":
@@ -109,12 +114,12 @@ class Sotf():
 
     def extinction_wave(self):
         final_flag = False
-        if max(self.pebbles_df.deg) == 0:
+        if max(self.pebbles_df.deg.astype(int)) == 0:
             final_flag = True
-        elif max(self.pebbles_df[self.pebbles_df.placed==1].deg)==min(self.pebbles_df[self.pebbles_df.placed==1].deg):
+        elif max(self.pebbles_df[self.pebbles_df.placed==1].deg.astype(int))==min(self.pebbles_df[self.pebbles_df.placed==1].deg.astype(int)):
             final_flag = True
         else:
-            weakest_df = self.pebbles_df[self.pebbles_df['deg'] == min(self.pebbles_df[self.pebbles_df.placed==1].deg)]
+            weakest_df = self.pebbles_df[self.pebbles_df.deg.astype(int) == min(self.pebbles_df[self.pebbles_df.placed==1].deg.astype(int))]
 
             for i, row in weakest_df.iterrows():
                 if row["placed"]:
@@ -131,10 +136,10 @@ class Sotf():
                     self.peb_state[int(row["x"]),int(row["y"])]=0
                     self.state['pebbles'] = self.peb_state
 
-                    self.pebbles_df.loc[int(row["id"]), "x"] = np.nan
-                    self.pebbles_df.loc[int(row["id"]), "y"] = np.nan
-                    self.pebbles_df.loc[int(row["id"]), "placed"] = 0
-                    self.pebbles_df.loc[int(row["id"]), "deg"] = 0
+                    self.pebbles_df.loc[self.pebbles_df.id == int(row["id"]), "x"] = np.nan
+                    self.pebbles_df.loc[self.pebbles_df.id == int(row["id"]), "y"] = np.nan
+                    self.pebbles_df.loc[self.pebbles_df.id == int(row["id"]), "placed"] = 0
+                    self.pebbles_df.loc[self.pebbles_df.id == int(row["id"]), "deg"] = 0
                 else:
                     pass
 
@@ -178,6 +183,7 @@ class Sotf():
 
                     if len(temp_df)==0 :
                         # no more pebbles for this player
+                        print({"current": self.state_hash, "previous":self.state_hash_prev, "action":self.action})
                         print("no more pebbles")
                     else:
                         # still some pebbles for this player
@@ -189,9 +195,9 @@ class Sotf():
                             self.state['pebbles'] = self.peb_state
 
                             # update pebbles dataframe
-                            self.pebbles_df.at[temp_df.id[0], 'x'] = converted_action[0]
-                            self.pebbles_df.at[temp_df.id[0], 'y'] = converted_action[1]
-                            self.pebbles_df.at[temp_df.id[0], 'placed'] = 1
+                            self.pebbles_df.loc[self.pebbles_df.id==temp_df.id.values[0], 'x'] = converted_action[0]
+                            self.pebbles_df.loc[self.pebbles_df.id==temp_df.id.values[0], 'y'] = converted_action[1]
+                            self.pebbles_df.loc[self.pebbles_df.id==temp_df.id.values[0], 'placed'] = 1
 
 
                         else:
@@ -225,17 +231,17 @@ class Sotf():
                             (self.pebbles_df['x'] == target[0]) & (self.pebbles_df['y'] == target[1])]
 
                         # we check whether there is an arrow there already
-                        if self.arr_state[temp_source.id[0], temp_target.id[0]] == 0:
-                            self.arr_state[temp_source.id[0], temp_target.id[0]] = self.current_player
+                        if self.arr_state[temp_source.id.values[0], temp_target.id.values[0]] == 0:
+                            self.arr_state[temp_source.id.values[0], temp_target.id.values[0]] = self.current_player
                             self.state['arrows'] = self.arr_state
 
                             # update self.arrows_df
-                            self.arrows_df.at[temp_source.id[0], 'source_id'] = temp_source.id[0]
-                            self.arrows_df.at[temp_target.id[0], 'target_id'] = temp_target.id[0]
-                            self.arrows_df.at[temp_df.id[0], 'placed'] = 1
+                            self.arrows_df.loc[self.arrows_df.id==temp_df.id.values[0], 'source_id'] = temp_source.id.values[0]
+                            self.arrows_df.loc[self.arrows_df.id==temp_df.id.values[0], 'target_id'] = temp_target.id.values[0]
+                            self.arrows_df.loc[self.arrows_df.id==temp_df.id.values[0], 'placed'] = 1
 
                             # update self.pebbles_df (update degree) .. only target degree should increase
-                            self.pebbles_df.at[temp_target.iloc[0, 0], 'deg'] = self.pebbles_df.loc[temp_target.iloc[0, 0], 'deg'] + 1
+                            self.pebbles_df.loc[self.pebbles_df.id == temp_target.id.values[0], 'deg'] = 1 + int(self.pebbles_df.loc[self.pebbles_df.id == temp_target.id.values[0], 'deg'].values)
                         else:
                             print('you must not place more than one arrow between any pair of pebbles.')
 
@@ -248,30 +254,18 @@ class Sotf():
                         print("choose different grid points")
                 
             else:
+                self.no_action_count += 1
                 print('no action is chosen')
 
             #update state hash 
+            self.state_hash_prev = deepcopy(self.state_hash)
             npl = next_player(current_player=self.current_player, nr_players=self.nr_players)
             self.state_hash = self.append_state_hash_from_action(action=converted_action, action_player=self.current_player, turn_player=npl)
 
             # trigger extinction wave(s)??
             if self.last_move():
-                self.stage = "extinction-triggered"
-                # print(self.stage)
-                # print('before extinction the scores are ')
-                # print(self.scores)
-                self.extinction_waves()
-                # set scores
-                self.assign_scores()
-                # print('after extinction wave and after assigning scores the scores are ')
-                # print(self.scores)
-                self.stage = "extinction-rewards"
-                # set rewards
-                self._assign_rewards()  
-                # print('This translates into the following rewards ')
-                # print(self.rewards)
-                self.done = True
-
+                self.state_terminal = deepcopy(self.state)
+                self.trigger_extinctions()
         else:
             # we are not placing anymore
             # or rather placing does not affect the board, just everyone gets her or his reward for the game
@@ -282,8 +276,17 @@ class Sotf():
         reward = 0
         info = 'nothing'
 
-        return self.state, reward, self.done, info
+        return self.state, reward, self.done, self.no_action_count
 
+    def trigger_extinctions(self):
+        self.stage = "extinction-triggered"
+        self.extinction_waves()
+        # set scores
+        self.assign_scores()
+        self.stage = "extinction-rewards"
+        # set rewards
+        self._assign_rewards()  
+        self.done = True
 
     def _get_reward(self):
         return self.rewards[self.current_player-1]
@@ -348,13 +351,13 @@ class Sotf():
         arr_none = [-1,-1,-1,-1]
         opts = [peb_none + arr_none]
 
-        if not self.pebbles_df[(self.pebbles_df.player==npl) & (self.pebbles_df.placed==0)].empty:
+        if not self.pebbles_df[(self.pebbles_df.player==cpl) & (self.pebbles_df.placed==0)].empty:
             # should the players turn also be included in the state of the game?
             # pebble options are all the vacant spots, if you have pebbles left.
             peb_opts = np.argwhere(self.state['pebbles']==0).tolist()
             for po in peb_opts:
                 opts.append(po + arr_none)
-        if not self.arrows_df[(self.arrows_df.player==npl) & (self.arrows_df.placed==0)].empty:
+        if not self.arrows_df[(self.arrows_df.player==cpl) & (self.arrows_df.placed==0)].empty:
             # arrow options are all the pairs of pebbles that conform to arrow-laying, if there are arrows left.
             pebs = self.pebbles_df.loc[self.pebbles_df.placed==1,['id','x','y']].astype(int).to_dict(orient='list')
             adj = self.state['arrows'][pebs['id']][:,pebs['id']]
@@ -468,6 +471,8 @@ class Sotf():
         self.done = False
         self.action = None
 
+        self.no_action_count = 0
+
         self.scores = [0] * self.nr_players
         self.rewards = [0] * self.nr_players
         self.triggering_player = 0
@@ -486,7 +491,8 @@ class Sotf():
         initial_peb_hash = ''
         initial_arr_hash = ''
         self.state_hash = '+'.join([initial_ply_hash, initial_peb_hash, initial_arr_hash])
-
+        self.state_hash_prev = ''
+        self.state_terminal = self.state 
 
         self.pebbles_df = pd.DataFrame({'id': list(range(self.peb_total)),
                                         'player': np.repeat(list(range(1, self.nr_players + 1)), self.peb),
