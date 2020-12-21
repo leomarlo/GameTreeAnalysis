@@ -22,6 +22,7 @@ class MCTS():
 
         self.g.add_node(node_for_adding=self.game.state_hash, 
                         rewards= np.zeros(self.nr_players),
+                        main_player_reward = 0,
                         N=0, # number of roll-outs for this node
                         terminal=False,
                         leads_to_terminal=False, # unless there is only one state
@@ -73,6 +74,7 @@ class MCTS():
                 # add first node and then edge
                 self.g.add_node(node_for_adding=child,
                                 rewards=np.zeros(self.nr_players),
+                                main_player_reward = 0,
                                 N=0,
                                 # uct=self.calc_uct(w=0,N=0,t=t),
                                 terminal=False,  # all nodes are initially terminal 
@@ -151,10 +153,14 @@ class MCTS():
             return np.array(tweeze_rewards(self.game.rewards))
     
 
-    def create_tree(self, max_iter=100):
-        for i in range(max_iter):
-            node, rewards = self.iteration()
-            print( node, rewards)
+    def create_tree(self, max_iter=100, verbose=False):
+        if verbose:
+            for i in range(max_iter):
+                node, rewards = self.iteration()
+                print( node, rewards)
+        else:
+            for i in range(max_iter):
+                node, rewards = self.iteration()
 
 
     def iteration(self):
@@ -175,7 +181,9 @@ class MCTS():
         if not including_multiple_paths:
             for node in reversed(return_path):
                 # increment the reward to each node including the selected node
-                self.g.nodes[node]["rewards"] = np.add(self.g.nodes[node]["rewards"], rewards) 
+                new_rewards = np.add(self.g.nodes[node]["rewards"], rewards) 
+                self.g.nodes[node]["rewards"] = new_rewards
+                self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player]
                 # increment the number of rollouts for that path.
                 self.g.nodes[node]["N"] += 1
         else:
@@ -187,7 +195,9 @@ class MCTS():
             
 
     def backpropagate_multiple_paths(self, node, rewards, return_path, on_path):
-        self.g.nodes[node]["rewards"] = np.add(self.g.nodes[node]["rewards"], rewards) 
+        new_rewards = np.add(self.g.nodes[node]["rewards"], rewards) 
+        self.g.nodes[node]["rewards"] = new_rewards
+        self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player]
         self.g.nodes[node]["N"] += 1
         parents = self.g.nodes[node]['parents']
         if len(parents)==0 or on_path==0:

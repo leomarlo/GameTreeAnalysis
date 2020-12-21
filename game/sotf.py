@@ -255,7 +255,7 @@ class Sotf():
                 
             else:
                 self.no_action_count += 1
-                print('no action is chosen')
+                # print('no action is chosen')
 
             #update state hash 
             self.state_hash_prev = deepcopy(self.state_hash)
