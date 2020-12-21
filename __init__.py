@@ -14,21 +14,12 @@ MC = MCTS(game=game,
           exploration_epsilon=0.25,
           biasedness=1,
           optimizing_player=1)
-#%%
-leaf_node, return_path = MC.select()  # selects any leaf node
 
+leaf_node, return_path = MC.select()  # selects any leaf node
 #%%
-if not leaf_node:
-    print('leaf node is none??')
-#%%
-sel_node = MC.expand(node=leaf_node, return_random=True) # expands the graph 
-#%%
-if not sel_node:
-    print('sel_node is none??')
-return_path.append(sel_node)
-#%%
-reward = MC.rollout(node=sel_node)
-#%%
-MC.backpropagate(return_path=return_path, reward=reward)
-        
+# sel_node = MC.expand(node=leaf_node, return_random=True) # expands the graph 
+# return_path.append(sel_node)
+# reward = MC.rollout(edge=(leaf_node,sel_node))
+# MC.backpropagate(return_path=return_path, reward=reward, including_multiple_paths=True)
+       
 # %%
