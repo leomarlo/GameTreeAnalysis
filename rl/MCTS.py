@@ -156,24 +156,70 @@ class MCTS():
     def create_tree(self, max_iter=100, verbose=False):
         if verbose:
             for i in range(max_iter):
-                node, rewards = self.iteration()
-                print( node, rewards)
+                if isinstance(verbose,int):
+                    node, rewards = self.iteration(verbose=False)
+                    if i % verbose == 0:
+                        print(i, node, rewards)
+                else:
+                    node, rewards = self.iteration(verbose=verbose)
+                    print(i, node, rewards)
         else:
             for i in range(max_iter):
-                node, rewards = self.iteration()
+                node, rewards = self.iteration(verbose=False)
 
 
-    def iteration(self):
-        leaf_node, return_path = self.select()  # selects any leaf node
+    def iteration(self, verbose=False):
+        if verbose:
+            print('select node')
+        # try:
+        leaf_node, path = self.select(return_path=[])  # selects any leaf node
+        # except Exception as e:
+        #     print(e)
+        #     return self
         if not leaf_node:
-            print('leaf node is none??')
-            return None
+            if verbose:
+                print('leaf node is none??')
+            return None, None
+        if verbose:
+            print('leaf node is ', leaf_node)
+        # try:
+        # Check whether leaf_node is terminal 
+        if len(path)>1:
+            rewards = self.rollout(edge=(path[-2],leaf_node))
+            self.backpropagate(return_path=path, rewards=rewards, including_multiple_paths=True)
+        if self.g.nodes[leaf_node]["terminal"]:
+            return leaf_node, rewards
         sel_node = self.expand(node=leaf_node, return_random=True) # expands the graph 
+        # except Exception as e:
+        #     print(e)
+        #     return self
         if not sel_node:
-            print('sel_node is none??')
-        return_path.append(sel_node)
+            if verbose:
+                print('no node selected')
+            return leaf_node, None
+        else:
+            if verbose:
+                print('node selected')
+                
+
+        path.append(sel_node)
+        if verbose:
+            print(path)
+            print('rollout')
+        # try:
         rewards = self.rollout(edge=(leaf_node,sel_node))
-        self.backpropagate(return_path=return_path, rewards=rewards, including_multiple_paths=True)
+        # except Exception as e:
+        #     print(e)
+        #     return self
+        if verbose:
+            print('backpropagate')
+        try:
+            self.backpropagate(return_path=path, rewards=rewards, including_multiple_paths=True)
+        except Exception as e:
+            print(e)
+            return self
+        if verbose:
+            print('return')
         return sel_node, rewards
        
 
@@ -183,7 +229,7 @@ class MCTS():
                 # increment the reward to each node including the selected node
                 new_rewards = np.add(self.g.nodes[node]["rewards"], rewards) 
                 self.g.nodes[node]["rewards"] = new_rewards
-                self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player]
+                self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player-1]
                 # increment the number of rollouts for that path.
                 self.g.nodes[node]["N"] += 1
         else:
@@ -197,7 +243,7 @@ class MCTS():
     def backpropagate_multiple_paths(self, node, rewards, return_path, on_path):
         new_rewards = np.add(self.g.nodes[node]["rewards"], rewards) 
         self.g.nodes[node]["rewards"] = new_rewards
-        self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player]
+        self.g.nodes[node]["main_player_reward"] = new_rewards[self.optimizing_player - 1]
         self.g.nodes[node]["N"] += 1
         parents = self.g.nodes[node]['parents']
         if len(parents)==0 or on_path==0:

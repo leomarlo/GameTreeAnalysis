@@ -4,3 +4,7 @@ env/
 .ipynb*
 *.pyc
 *pycache*
+test/
+
+mcg.pickle
+nodes_pandas_df.pickle
