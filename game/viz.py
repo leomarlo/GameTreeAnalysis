@@ -1,6 +1,13 @@
+import pandas as pd
+import networkx as nx
+import pickle
+import os 
 import tkinter as tk
 from sotf import Sotf
 
+
+def frac_non_zero(a,b):
+    return (0 if b==0 else a/b)
 
 def _create_circle(self, x, y, r, **kwargs):
     return self.create_oval(x-r, y-r, x+r, y+r, **kwargs)
@@ -68,6 +75,8 @@ class GUI():
     ARROW_CANVAS_HEIGHT = 120
     PEBBLE_CANVAS_HEIGHT = 120
 
+    LAZYLOADING = True
+
     def __init__(self):
         self.game = Sotf(peb=self.PEBBLES,
                          arr=self.ARROWS,
@@ -115,6 +124,16 @@ class GUI():
         self.canvas_callback()
         self.cancel_peb_or_arr()
         self.next_player()
+        self.computer_moves()
+
+        # load computer moves
+        self.graph_loaded = False
+        if not self.LAZYLOADING:
+            print(os.getcwd())
+            self.MCg = nx.read_gpickle('./game/mcg.pickle')
+            self.graph_loaded = True
+            print(self.graph_loaded)
+        
 
         # start the program
         self.window.mainloop()
@@ -260,7 +279,7 @@ class GUI():
         TINY_BUTTON = self.TINY_BUTTON
         CANCEL_BUTTON_COLOR = self.CANCEL_BUTTON_COLOR
 
-        ply1_title = tk.Label(window, text='Player 1', fg='black') #padx=5, pady=20, side=tk.LEFT)
+        ply1_title = tk.Button(window, text='Player 1\n Computer Move', fg='black', bg=self.PLAYER_1_COLOR) #padx=5, pady=20, side=tk.LEFT)
         ply1_title.place(x=(HALF_PAD),
                         y=(HALF_PAD),
                         width=COL_WIDTH,
@@ -370,7 +389,7 @@ class GUI():
         TINY_BUTTON = self.TINY_BUTTON
         CANCEL_BUTTON_COLOR = self.CANCEL_BUTTON_COLOR
 
-        ply2_title = tk.Label(window, text='Player 2', fg='black') #padx=5, pady=20, side=tk.LEFT)
+        ply2_title = tk.Button(window, text='Player 2\nComputer Move', fg='black', bg=self.PLAYER_2_COLOR) #padx=5, pady=20, side=tk.LEFT)
         ply2_title.place(x=(HALF_PAD + COL_WIDTH + PAD + CANVAS_WIDTH + PAD),
                         y=(HALF_PAD),
                         width=COL_WIDTH,
@@ -488,9 +507,56 @@ class GUI():
         self.place_arrs2.bind("<Button 1>", self.display_event_id, add='+')
         self.place_arrs2.bind("<Button 1>", lambda e: self.set_status('select_arrow',player=2), add='+')
 
+    def computer_moves(self):
+        self.ply1_title.bind("<Button 1>", lambda e: self.computer_move(player=1), add='+')
+        self.ply2_title.bind("<Button 1>", lambda e: self.computer_move(player=2), add='+')
+
     #########################################################
     #####  EVENT HANDLING  ##################################
     #########################################################
+
+
+    def computer_move(self, player):
+        if player!=self.current_player:
+            return None
+        # let the computer make a move suggestion.
+        if self.LAZYLOADING and not self.graph_loaded:
+            self.info['text'] = 'MCTS graph is loading'
+            self.MCg = nx.read_gpickle('./game/mcg.pickle')
+            self.info['text'] = 'MCTS graph has been successfully loaded.'
+            self.graph_loaded = True
+        options = self.MCg.out_edges(self.game.state_hash)
+        profit = {e:frac_non_zero(a=self.MCg.nodes[e[1]]['rewards'][int(self.current_player) - 1],
+                                  b=self.MCg.nodes[e[1]]['N'])
+                  for e in options}
+        if len(profit)==0:
+            self.info['text'] = 'The computer doesnt know what to do.'
+            return None
+        best_option = max(profit, key=profit.get)
+        self.action = self.MCg.edges[best_option]["action"]
+        place_pebble = self.action[0]!=-1
+        place_arrow = self.action[0]!=-1
+        if not self.status=='nothing':
+            self.info['text'] = 'First cancel your current selection.'
+        else:
+            colors = [self.PLAYER_1_COLOR, self.PLAYER_2_COLOR]
+            if place_pebble:
+                x = self.CANVAS_PADDING + self.action[0]*self.CANVAS_DX
+                y = self.CANVAS_PADDING + self.action[1]*self.CANVAS_DY
+                self.current_element = self.canvas.create_circle(x=x, y=y, r=self.DEMO_PEBBLE_WIDTH, fill=colors[self.current_player - 1])
+                self.status = 'finished'
+            elif place_arrow:
+                sx = self.CANVAS_PADDING + self.action[0]*self.CANVAS_DX
+                sy = self.CANVAS_PADDING + self.action[1]*self.CANVAS_DY
+                tx = self.CANVAS_PADDING + self.action[2]*self.CANVAS_DX
+                ty = self.CANVAS_PADDING + self.action[3]*self.CANVAS_DY
+                self.current_element = self.canvas.create_line(sx, sy, tx, ty, fill=colors[int(self.current_player)-1],arrow="last", arrowshape=(2*self.DEMO_ARROW_WIDTH,2*self.DEMO_ARROW_WIDTH,self.DEMO_ARROW_WIDTH),width=self.DEMO_ARROW_WIDTH)
+                self.status = 'finished'
+            else:
+                self.info['text'] = 'The computer recommends to be idle.'
+
+
+
 
     def remove_element(self, event):
         print('remove', self.status)
@@ -569,9 +635,11 @@ class GUI():
         colors = [self.PLAYER_1_COLOR, self.PLAYER_2_COLOR]
         # print(event.x, event.y)
         if self.status == 'place_pebble':
-            self.current_element = self.canvas.create_circle(x=x, y=y, r=self.DEMO_PEBBLE_WIDTH, fill=colors[self.current_player - 1])
-            self.action = [xi,yi,-1,-1,-1,-1]
-            self.status = 'finished'
+            pdf = self.game.pebbles_df
+            if len(pdf[(pdf.placed) & ((pdf.x==float(xi)) & (pdf.y==float(yi)))])==0:
+                self.current_element = self.canvas.create_circle(x=x, y=y, r=self.DEMO_PEBBLE_WIDTH, fill=colors[self.current_player - 1])
+                self.action = [xi,yi,-1,-1,-1,-1]
+                self.status = 'finished'
         elif self.status == 'remove_last_pebble':
             print(self.current_element)
             if self.current_element:
